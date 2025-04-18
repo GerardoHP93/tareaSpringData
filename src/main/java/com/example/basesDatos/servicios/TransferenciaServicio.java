@@ -9,8 +9,8 @@ import com.example.basesDatos.repositorios.CuentaRepositorio;
 import java.math.BigDecimal;
 
 /**
- * Servicio que maneja la lógica de negocio para las operaciones de transferencia entre cuentas.
- * Implementa la validación de reglas de negocio como saldo suficiente, existencia de cuentas, etc.
+ * Servicio que implementa la lógica de negocio para operaciones con cuentas.
+ * Maneja la creación de cuentas, consultas y transferencias entre cuentas.
  */
 @Service
 public class TransferenciaServicio {
@@ -18,9 +18,9 @@ public class TransferenciaServicio {
     private final CuentaRepositorio repo;
 
     /**
-     * Constructor que utiliza inyección de dependencias para obtener el repositorio.
+     * Constructor que inyecta el repositorio de cuentas.
      *
-     * @param repo Repositorio para acceder a las operaciones de base de datos de las cuentas
+     * @param repo Repositorio que maneja las operaciones de persistencia
      */
     public TransferenciaServicio(CuentaRepositorio repo) {
         this.repo = repo;
@@ -29,57 +29,34 @@ public class TransferenciaServicio {
     /**
      * Lista todas las cuentas disponibles en la base de datos.
      *
-     * @return Iterable con todas las cuentas existentes
+     * @return Colección de todas las cuentas
      */
     public Iterable<Cuenta> listar() {
         return this.repo.findAll();
     }
 
     /**
-     * Realiza una transferencia de dinero entre dos cuentas, aplicando validaciones.
+     * Obtiene una cuenta específica por su ID.
      *
-     * @param origen   ID de la cuenta de origen
-     * @param destino  ID de la cuenta de destino
-     * @param cantidad Monto a transferir
-     * @throws TransferenciaException Si ocurre algún error durante la validación o transferencia
+     * @param id Identificador único de la cuenta
+     * @return La cuenta encontrada
+     * @throws TransferenciaException Si la cuenta no existe
      */
-    public void transferir(long origen, long destino, BigDecimal cantidad) {
-        // Validación: la cantidad debe ser positiva
-        if (cantidad.compareTo(BigDecimal.ZERO) <= 0) {
-            throw new TransferenciaException("La cantidad a transferir debe ser mayor que cero",
-                    TipoError.CANTIDAD_INVALIDA);
-        }
-
-        // Obtener la cuenta de origen, lanzando excepción si no existe
-        Cuenta cuentaOrigen = repo.findById(origen)
-                .orElseThrow(() -> new TransferenciaException("Cuenta de origen no encontrada",
+    public Cuenta obtenerCuentaPorId(long id) {
+        return repo.findById(id)
+                .orElseThrow(() -> new TransferenciaException(
+                        "Cuenta con ID " + id + " no encontrada",
                         TipoError.CUENTA_NO_ENCONTRADA));
-
-        // Obtener la cuenta de destino, lanzando excepción si no existe
-        Cuenta cuentaDestino = repo.findById(destino)
-                .orElseThrow(() -> new TransferenciaException("Cuenta de destino no encontrada",
-                        TipoError.CUENTA_NO_ENCONTRADA));
-
-        BigDecimal saldoOrigen = cuentaOrigen.getCantidad();
-
-        // Validación: verificar si hay saldo suficiente en la cuenta de origen
-        if (saldoOrigen.compareTo(cantidad) < 0) {
-            throw new TransferenciaException("Saldo insuficiente en la cuenta de origen",
-                    TipoError.SALDO_INSUFICIENTE);
-        }
-
-        BigDecimal saldoDestino = cuentaDestino.getCantidad();
-
-        // Realizar la transferencia: restar de la cuenta origen y sumar a la cuenta destino
-        cuentaOrigen.setCantidad(saldoOrigen.subtract(cantidad));
-        cuentaDestino.setCantidad(saldoDestino.add(cantidad));
-
-        // Persistir los cambios en la base de datos
-        repo.save(cuentaOrigen);
-        repo.save(cuentaDestino);
     }
 
-    //Método para crear una cuenta desde la aplicación
+    /**
+     * Crea una nueva cuenta con los datos proporcionados.
+     *
+     * @param nombre Nombre del propietario de la cuenta
+     * @param cantidadInicial Saldo inicial de la cuenta
+     * @return La cuenta creada con su ID generado
+     * @throws TransferenciaException Si los datos son inválidos
+     */
     public Cuenta crearCuenta(String nombre, BigDecimal cantidadInicial) {
         if (nombre == null || nombre.trim().isEmpty()) {
             throw new TransferenciaException("El nombre del propietario no puede estar vacío",
@@ -98,4 +75,52 @@ public class TransferenciaServicio {
         return repo.save(nuevaCuenta);
     }
 
+    /**
+     * Realiza una transferencia de fondos entre dos cuentas.
+     *
+     * @param origen ID de la cuenta origen
+     * @param destino ID de la cuenta destino
+     * @param cantidad Monto a transferir
+     * @throws TransferenciaException Si la transferencia no puede completarse por algún motivo
+     */
+    public void transferir(long origen, long destino, BigDecimal cantidad) {
+        // Validar que la cantidad sea positiva
+        if (cantidad.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new TransferenciaException("La cantidad a transferir debe ser mayor que cero",
+                    TipoError.CANTIDAD_INVALIDA);
+        }
+
+        // Validar que no sea la misma cuenta
+        if (origen == destino) {
+            throw new TransferenciaException("No se puede transferir a la misma cuenta",
+                    TipoError.CANTIDAD_INVALIDA);
+        }
+
+        // Obtener las cuentas
+        Cuenta cuentaOrigen = repo.findById(origen)
+                .orElseThrow(() -> new TransferenciaException("Cuenta de origen no encontrada",
+                        TipoError.CUENTA_NO_ENCONTRADA));
+
+        Cuenta cuentaDestino = repo.findById(destino)
+                .orElseThrow(() -> new TransferenciaException("Cuenta de destino no encontrada",
+                        TipoError.CUENTA_NO_ENCONTRADA));
+
+        BigDecimal saldoOrigen = cuentaOrigen.getCantidad();
+
+        // Verificar si hay saldo suficiente
+        if (saldoOrigen.compareTo(cantidad) < 0) {
+            throw new TransferenciaException("Saldo insuficiente en la cuenta de origen",
+                    TipoError.SALDO_INSUFICIENTE);
+        }
+
+        BigDecimal saldoDestino = cuentaDestino.getCantidad();
+
+        // Actualizar cantidades
+        cuentaOrigen.setCantidad(saldoOrigen.subtract(cantidad));
+        cuentaDestino.setCantidad(saldoDestino.add(cantidad));
+
+        // Guardar cambios en la base de datos
+        repo.save(cuentaOrigen);
+        repo.save(cuentaDestino);
+    }
 }

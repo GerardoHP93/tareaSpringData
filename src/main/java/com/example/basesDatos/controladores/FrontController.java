@@ -5,35 +5,32 @@ import com.example.basesDatos.excepciones.TransferenciaException.TipoError;
 import com.example.basesDatos.modelos.Cuenta;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestParam;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 import com.example.basesDatos.servicios.TransferenciaServicio;
 
 import java.math.BigDecimal;
 
 /**
- * Controlador REST que expone endpoints para operaciones relacionadas con cuentas y transferencias.
- * Maneja las solicitudes HTTP y devuelve respuestas con códigos de estado apropiados.
+ * Controlador REST que maneja las operaciones relacionadas con cuentas y transferencias.
+ * Proporciona endpoints para listar cuentas, crear cuentas nuevas y realizar transferencias.
  */
 @RestController
 public class FrontController {
     private final TransferenciaServicio servicio;
 
     /**
-     * Constructor que utiliza inyección de dependencias para obtener el servicio de transferencias.
+     * Constructor que inyecta el servicio de transferencias.
      *
-     * @param servicio Servicio que implementa la lógica de negocio para transferencias
+     * @param servicio Servicio que maneja la lógica de negocio para las operaciones con cuentas
      */
     public FrontController(TransferenciaServicio servicio) {
         this.servicio = servicio;
     }
 
     /**
-     * Endpoint para listar todas las cuentas disponibles.
+     * Endpoint para listar todas las cuentas existentes.
      *
-     * @return Lista de todas las cuentas en la base de datos
+     * @return Listado de todas las cuentas almacenadas en la base de datos
      */
     @GetMapping("/")
     public Iterable<Cuenta> index() {
@@ -41,55 +38,12 @@ public class FrontController {
     }
 
     /**
-     * Endpoint para realizar una transferencia entre cuentas.
-     * Devuelve diferentes códigos HTTP dependiendo del resultado de la operación.
+     * Endpoint para crear una nueva cuenta bancaria.
      *
-     * @param origen ID de la cuenta de origen
-     * @param destino ID de la cuenta de destino
-     * @param cantidad Monto a transferir
-     * @return ResponseEntity con mensaje de éxito o error y código HTTP apropiado
+     * @param nombre Nombre del propietario de la cuenta
+     * @param cantidadInicial Saldo inicial con el que se creará la cuenta
+     * @return Respuesta HTTP con la cuenta creada o mensaje de error
      */
-    @PostMapping("/transferir")
-    public ResponseEntity<String> transferir(
-            @RequestParam("origen") long origen,
-            @RequestParam("destino") long destino,
-            @RequestParam("cantidad") BigDecimal cantidad) {
-
-        try {
-            // Intentar realizar la transferencia
-            servicio.transferir(origen, destino, cantidad);
-            // Si es exitosa, devolver código 200 OK
-            return ResponseEntity.ok("Transferencia realizada con éxito");
-        } catch (TransferenciaException e) {
-            // Determinar el código de estado HTTP según el tipo de error
-            HttpStatus status;
-
-            switch (e.getTipoError()) {
-                case SALDO_INSUFICIENTE:
-                    // 400 Bad Request para saldo insuficiente
-                case CANTIDAD_INVALIDA:
-                    // 400 Bad Request para cantidad inválida
-                    status = HttpStatus.BAD_REQUEST;
-                    break;
-                case CUENTA_NO_ENCONTRADA:
-                    // 404 Not Found para cuentas inexistentes
-                    status = HttpStatus.NOT_FOUND;
-                    break;
-                default:
-                    // 500 Internal Server Error para otros errores
-                    status = HttpStatus.INTERNAL_SERVER_ERROR;
-            }
-
-            // Devolver respuesta con el código de estado y mensaje de error
-            return ResponseEntity.status(status).body("Error: " + e.getMessage());
-        } catch (Exception e) {
-            // Capturar cualquier otra excepción no controlada
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body("Error inesperado: " + e.getMessage());
-        }
-    }
-
-    //Endpoint adicional para crear una cuenta usando un método POST
     @PostMapping("/crear")
     public ResponseEntity<?> crearCuenta(
             @RequestParam("nombre") String nombre,
@@ -108,5 +62,58 @@ public class FrontController {
         }
     }
 
+    /**
+     * Endpoint para realizar transferencias entre cuentas.
+     * Valida que ambas cuentas existan y que la cuenta origen tenga saldo suficiente.
+     *
+     * @param origen ID de la cuenta origen
+     * @param destino ID de la cuenta destino
+     * @param cantidad Monto a transferir
+     * @return Respuesta HTTP con resultado de la operación y mensaje descriptivo
+     */
+    @PostMapping("/transferir")
+    public ResponseEntity<String> transferir(
+            @RequestParam("origen") long origen,
+            @RequestParam("destino") long destino,
+            @RequestParam("cantidad") BigDecimal cantidad) {
 
+        try {
+            // Obtenemos los detalles de las cuentas antes de la transferencia
+            Cuenta cuentaOrigen = servicio.obtenerCuentaPorId(origen);
+            Cuenta cuentaDestino = servicio.obtenerCuentaPorId(destino);
+
+            // Realizamos la transferencia
+            servicio.transferir(origen, destino, cantidad);
+
+            // Mensaje de éxito detallado
+            String mensaje = String.format(
+                    "Transferencia realizada con éxito. Se han transferido %s de la cuenta de %s a la cuenta de %s.",
+                    cantidad.toString(),
+                    cuentaOrigen.getNombre(),
+                    cuentaDestino.getNombre()
+            );
+
+            return ResponseEntity.ok(mensaje);
+
+        } catch (TransferenciaException e) {
+            HttpStatus status;
+
+            switch (e.getTipoError()) {
+                case SALDO_INSUFICIENTE:
+                case CANTIDAD_INVALIDA:
+                    status = HttpStatus.BAD_REQUEST;
+                    break;
+                case CUENTA_NO_ENCONTRADA:
+                    status = HttpStatus.NOT_FOUND;
+                    break;
+                default:
+                    status = HttpStatus.INTERNAL_SERVER_ERROR;
+            }
+
+            return ResponseEntity.status(status).body("Error: " + e.getMessage());
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body("Error inesperado: " + e.getMessage());
+        }
+    }
 }
