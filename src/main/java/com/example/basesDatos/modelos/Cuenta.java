@@ -5,7 +5,6 @@ import org.springframework.data.relational.core.mapping.Table;
 
 import java.math.BigDecimal;
 
-@Table("cuenta")
 public class Cuenta {
 
     @Id
